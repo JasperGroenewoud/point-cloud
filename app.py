@@ -10,7 +10,7 @@ from munch import Munch
 from viktor import ViktorController, progress_message, File
 from viktor.views import ImageView, ImageResult, DataGroup, DataItem, DataResult, DataView
 from viktor.parametrization import ViktorParametrization, TextField, NumberField, Tab, Step, FileField, OptionField, \
-    LineBreak, Text, BooleanField, IsFalse, Lookup
+    LineBreak, Text, BooleanField, IsFalse, Lookup, IsTrue
 
 
 def get_input_headers(params, **kwargs):
@@ -23,11 +23,23 @@ def get_input_headers(params, **kwargs):
         headers = df.columns.tolist()
         headers = [item for item in headers if item not in ['X', 'Y', 'Z']]
     return headers
+def calculate_default_clusters(params, **kwargs):
+    if params.step_1.input_8 == 'Planes':
+        clusters = 2
+    else:
+        clusters = 3
+    return clusters
+
 def use_correct_file(params: Munch):
     if params.step_1.input_7 is True:
-        params.xyz_file = File.from_path(
-            Path(__file__).parent / "37GN1_21 - Haringvliet Bridge.xyz"
-        )
+        if params.step_1.input_8 == 'Planes':
+            params.xyz_file = File.from_path(
+                Path(__file__).parent / "KME_planes.xyz"
+            )
+        else:
+            params.xyz_file = File.from_path(
+                Path(__file__).parent / "37GN1_21 - Haringvliet Bridge.xyz"
+            )
     else:
         params.xyz_file = params.step_1.input_1.file
     return params.xyz_file
@@ -41,7 +53,7 @@ class Parametrization(ViktorParametrization):
         '\n'
         'The app is structured into 3 steps:\n'
         '- **Step 1:** upload the 3D data in .xyz format, and explore the data using 3D and 2D plots. \n'
-        '- **Step 2:** filter the data,if applicable. The filter available in this app filters out pionts with a value below the mean, for the user-specified axis (X, Y or Z). \n'
+        '- **Step 2:** filter the data, if applicable. The filter available in this app filters out pionts with a value below the mean, for the user-specified axis (X, Y or Z). \n'
         '- **Step 3:** cluster the data to identify objects. \n'
         '#### Step 1: Explore \n'
         '1. Upload an .xyz file below. Ensure that all columns are named. The first three columns must be the X, Y and Z values, and be named exactly X, Y and Z.\n'
@@ -49,12 +61,13 @@ class Parametrization(ViktorParametrization):
         '3. Next, select the feature you would like to plot, such as R, G, B or Intensity. \n'
         '4. Then, experiment with the scatter plots in the "2D representation" tab. The parameters enable you to change the axes, and the value plotted as an axis average. Use this to identify along which axis to filer. Notice how the ground and water surface all fall below the Z-axis mean, so we can use that as a filter in the next step. \n'
         '\n'
-        '#### Example: highway with gantries \n'
-        'We have provided a sample file to cluster a highway with two gantries, which is partly on land and partly over water. The filter is along the Z-axis, to eliminate the water and ground, and keep only the road surface.')
-    step_1.input_7 = BooleanField('Use sample highway file', default=True)
+        '#### Examples: plane or highway with gantries \n'
+        'The app comes with two sample files: Planes and Highway. The filters are along the Z-axis, to eliminate the ground surface.')
+    step_1.input_7 = BooleanField('Use sample file', default=True)
+    step_1.input_8 = OptionField('Select sample file', options=['Planes', 'Highway'], variant='radio-inline', default='Planes', visible=IsTrue(Lookup("step_1.input_7")))
     step_1.input_1 = FileField('Upload an .xyz file', file_types=['.xyz'], max_size=90_000_000, visible=IsFalse(Lookup("step_1.input_7")))
     step_1.lb_1 = LineBreak()
-    step_1.option_3 = OptionField('Plotted feature', options=get_input_headers, default="Classification")
+    step_1.option_3 = OptionField('Plotted feature', options=get_input_headers, default="Intensity")
     step_1.lb_4 = LineBreak()
     step_1.option_1 = OptionField('2D scatter plot 1 | x-axis', options=['X', 'Y', 'Z'], default='X')
     step_1.option_2 = OptionField('2D scatter plot 1 | y-axis', options=['X', 'Y', 'Z'], default='Z')
@@ -66,22 +79,22 @@ class Parametrization(ViktorParametrization):
     step_2 = Step('Step 2: Filter', views=['create_point_cloud_filter_3d', 'create_point_cloud_filter_2d'])
     step_2.not_in_params = Text(
         '#### Step 2: Filter \n'
-        'This step enables you to filter out data, like the water and ground surface below the highway. \n'
-        '1. Based on your conclusion from the previous step, select the axis you want to use as filter. In the highway sample case, this would be the Z-axis. \n'
-        '2. Also select the data feature for the plot. Feel free to experiment with the different features for the highway case. \n'
+        'This step enables you to filter out data, like the ground surface in the examples. \n'
+        '1. Based on your conclusion from the previous step, select the axis you want to use as filter. In the sample cases, this would be the Z-axis. \n'
+        '2. Also select the data feature for the plot. \n'
     )
     step_2.option_1 = OptionField('Axis as filter:', options=['X','Y','Z'], default='Z')
     step_2.lb_1 = LineBreak()
-    step_2.option_2 = OptionField('Feature for plot:', options=get_input_headers, default="Classification")
+    step_2.option_2 = OptionField('Feature for plot:', options=get_input_headers, default="Intensity")
     step_3 = Step('Step 3: Cluster', views=['spatial_clustering_3d', 'spatial_clustering', 'elbow_method'])
     step_3.not_in_params = Text(
         '#### Step 3: Cluster \n'
         'This step enables you to cluster the data. \n'
-        '1. In the highway example, set the number of clusters to 3. The output will distinguish between the two highway segments with gantries, and the one without.  \n'
-        '2. The "Elbow" tab helps identify the ideal number for other datasets: the "elbow" point suggests a likely suitable number of clusters.'
+        '1. In the planes exmaple, set the number of clusters to 2. \n'
+        '2. In the highway example, set the number of clusters to 3. The output will distinguish between the two highway segments with gantries, and the one without.  \n'
+        '3. The "Elbow" tab helps identify the ideal number for other datasets: the "elbow" point suggests a likely suitable number of clusters.'
     )
-    step_3.input_1 = NumberField('Number of clusters', default=3, min=1, max=30, step=1)
-
+    step_3.input_1 = NumberField('Number of clusters', default=2, min=1, max=5, step=1, variant='slider')
 
 class Controller(ViktorController):
     label = "Point Cloud quick selection"
